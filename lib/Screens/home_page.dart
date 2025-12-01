@@ -70,7 +70,7 @@ class HomePage extends StatelessWidget {
                     // Use user photoURL if available, otherwise use asset
                     backgroundImage: user?.photoURL != null
                         ? NetworkImage(user!.photoURL!)
-                        : const AssetImage("images/imaage.png") as ImageProvider,
+                        : const AssetImage("images/imaage.jpg") as ImageProvider,
                     radius: 40,
                   ),
                   const SizedBox(height: 5),
