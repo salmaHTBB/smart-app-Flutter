@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:tflite_v2/tflite_v2.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class FruitClassifierPage extends StatefulWidget {
   const FruitClassifierPage({super.key});
@@ -90,8 +91,44 @@ class _FruitClassifierPageState extends State<FruitClassifierPage> {
   // Take photo with camera
   Future<void> _pickImageFromCamera() async {
     try {
+      // Request camera permission
+      final status = await Permission.camera.request();
+      
+      if (status.isDenied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Camera permission is required to take photos'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      
+      if (status.isPermanentlyDenied) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Camera permission permanently denied. Please enable it in settings.'),
+              backgroundColor: Colors.red,
+              action: SnackBarAction(
+                label: 'Settings',
+                textColor: Colors.white,
+                onPressed: () {
+                  openAppSettings();
+                },
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Permission granted, open camera
       final XFile? pickedFile = await _picker.pickImage(
         source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.rear,
       );
       
       if (pickedFile != null) {
@@ -104,9 +141,11 @@ class _FruitClassifierPageState extends State<FruitClassifierPage> {
       }
     } catch (e) {
       print('Error taking photo: $e');
-      setState(() {
-        _result = 'Error taking photo: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _result = 'Error taking photo: $e';
+        });
+      }
     }
   }
 
