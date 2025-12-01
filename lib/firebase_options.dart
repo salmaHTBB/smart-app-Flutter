@@ -47,6 +47,7 @@ class DefaultFirebaseOptions {
     projectId: 'smart-app-flutter-8acf7',
     authDomain: 'smart-app-flutter-8acf7.firebaseapp.com',
     storageBucket: 'smart-app-flutter-8acf7.firebasestorage.app',
+    databaseURL: 'https://smart-app-flutter-8acf7-default-rtdb.firebaseio.com',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
@@ -55,6 +56,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '11178644691',
     projectId: 'smart-app-flutter-8acf7',
     storageBucket: 'smart-app-flutter-8acf7.firebasestorage.app',
+    databaseURL: 'https://smart-app-flutter-8acf7-default-rtdb.firebaseio.com',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
@@ -82,6 +84,7 @@ class DefaultFirebaseOptions {
     projectId: 'smart-app-flutter-8acf7',
     authDomain: 'smart-app-flutter-8acf7.firebaseapp.com',
     storageBucket: 'smart-app-flutter-8acf7.firebasestorage.app',
+    databaseURL: 'https://smart-app-flutter-8acf7-default-rtdb.firebaseio.com',
   );
 
 }
