@@ -172,6 +172,9 @@ class _RegisterPageState extends State<RegisterPage> {
         String? photoURL;
         if (_profileImage != null || _webImage != null) {
           photoURL = await _uploadImageToStorage(userCredential.user!.uid);
+        } else {
+          // Use default Google Drive image if no image uploaded
+          photoURL = 'https://drive.google.com/thumbnail?id=10070xpNfL-88y8c4Mz4fWOG_WhQ5-SGd';
         }
 
         // Update user profile with name and photo
@@ -184,7 +187,7 @@ class _RegisterPageState extends State<RegisterPage> {
         await _database.child('users').child(userCredential.user!.uid).set({
           'name': _nameController.text.trim(),
           'email': _emailController.text.trim(),
-          'photoURL': photoURL ?? '',
+          'photoURL': photoURL,
           'createdAt': DateTime.now().millisecondsSinceEpoch,
         });
 
