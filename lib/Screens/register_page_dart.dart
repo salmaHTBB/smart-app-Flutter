@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -9,7 +12,7 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final TextEditingController _nameController = TextEditingController(); // ⭐ NEW: Name controller
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
@@ -17,14 +20,57 @@ class _RegisterPageState extends State<RegisterPage> {
   final _formkey = GlobalKey<FormState>();
   bool _passwordVisible = false;
   bool _isLoading = false;
+  
+  File? _profileImage;
+  final ImagePicker _picker = ImagePicker();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
-  String? _validateName(String? value) { // ⭐ NEW: Validate Name
+  String? _validateName(String? value) {
     if ((value == null) || (value.isEmpty)) {
       return 'Please enter your name';
     }
     return null;
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 75,
+      );
+      
+      if (pickedFile != null) {
+        setState(() {
+          _profileImage = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking image: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<String?> _uploadImageToStorage(String userId) async {
+    if (_profileImage == null) return null;
+    
+    try {
+      final ref = _storage.ref().child('profile_images').child('$userId.jpg');
+      await ref.putFile(_profileImage!);
+      return await ref.getDownloadURL();
+    } catch (e) {
+      print('Error uploading image: $e');
+      return null;
+    }
   }
 
   String? _validateEmail(String? value) {
@@ -66,9 +112,20 @@ class _RegisterPageState extends State<RegisterPage> {
           password: _passwordController.text.trim(),
         );
 
-        // ⭐ MODIFIED: Update the display name
-        await userCredential.user?.updateDisplayName(_nameController.text.trim());
+        // Upload image to Firebase Storage and get URL
+        String? photoURL;
+        if (_profileImage != null) {
+          photoURL = await _uploadImageToStorage(userCredential.user!.uid);
+        }
 
+        // Update user profile with name and photo
+        await userCredential.user?.updateDisplayName(_nameController.text.trim());
+        if (photoURL != null) {
+          await userCredential.user?.updatePhotoURL(photoURL);
+        }
+
+        // Reload user to get updated profile
+        await userCredential.user?.reload();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -80,7 +137,6 @@ class _RegisterPageState extends State<RegisterPage> {
           Navigator.pushReplacementNamed(context, '/home');
         }
       } on FirebaseAuthException catch (e) {
-        // ... (Error handling is the same)
         String errorMessage;
         if (e.code == 'weak-password') {
           errorMessage = 'The password provided is too weak.';
@@ -133,6 +189,40 @@ class _RegisterPageState extends State<RegisterPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Profile Image Picker
+              Center(
+                child: GestureDetector(
+                  onTap: _pickImage,
+                  child: CircleAvatar(
+                    radius: 60,
+                    backgroundColor: Colors.purple.shade100,
+                    backgroundImage: _profileImage != null
+                        ? FileImage(_profileImage!)
+                        : null,
+                    child: _profileImage == null
+                        ? Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.add_a_photo,
+                                size: 40,
+                                color: Colors.purple,
+                              ),
+                              SizedBox(height: 5),
+                              Text(
+                                'Add Photo',
+                                style: TextStyle(
+                                  color: Colors.purple,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
               Image.asset(
                 "images/brain.jpeg",
                 width: 150,

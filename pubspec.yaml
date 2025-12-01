@@ -39,6 +39,7 @@ dependencies:
   firebase_auth: ^6.1.2
   fl_chart: ^1.1.1
   firebase_database: ^12.1.0
+  firebase_storage: ^13.0.4
   tflite_v2: ^1.0.0
   image_picker: ^1.1.2
   image: ^4.3.0
