@@ -1,7 +1,10 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:image_picker/image_picker.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -22,10 +25,12 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _isLoading = false;
   
   File? _profileImage;
+  Uint8List? _webImage;
   final ImagePicker _picker = ImagePicker();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
+  final DatabaseReference _database = FirebaseDatabase.instance.ref();
 
   String? _validateName(String? value) {
     if ((value == null) || (value.isEmpty)) {
@@ -44,9 +49,16 @@ class _RegisterPageState extends State<RegisterPage> {
       );
       
       if (pickedFile != null) {
-        setState(() {
-          _profileImage = File(pickedFile.path);
-        });
+        if (kIsWeb) {
+          final bytes = await pickedFile.readAsBytes();
+          setState(() {
+            _webImage = bytes;
+          });
+        } else {
+          setState(() {
+            _profileImage = File(pickedFile.path);
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -60,12 +72,56 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
+  Future<void> _pickImageFromCamera() async {
+    if (kIsWeb) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Camera is not supported on web. Please use gallery.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 75,
+      );
+      
+      if (pickedFile != null) {
+        setState(() {
+          _profileImage = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error taking photo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<String?> _uploadImageToStorage(String userId) async {
-    if (_profileImage == null) return null;
+    if (_profileImage == null && _webImage == null) return null;
     
     try {
       final ref = _storage.ref().child('profile_images').child('$userId.jpg');
-      await ref.putFile(_profileImage!);
+      
+      if (kIsWeb && _webImage != null) {
+        await ref.putData(_webImage!);
+      } else if (_profileImage != null) {
+        await ref.putFile(_profileImage!);
+      }
+      
       return await ref.getDownloadURL();
     } catch (e) {
       print('Error uploading image: $e');
@@ -114,7 +170,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
         // Upload image to Firebase Storage and get URL
         String? photoURL;
-        if (_profileImage != null) {
+        if (_profileImage != null || _webImage != null) {
           photoURL = await _uploadImageToStorage(userCredential.user!.uid);
         }
 
@@ -123,6 +179,14 @@ class _RegisterPageState extends State<RegisterPage> {
         if (photoURL != null) {
           await userCredential.user?.updatePhotoURL(photoURL);
         }
+
+        // Save user data to Firebase Realtime Database
+        await _database.child('users').child(userCredential.user!.uid).set({
+          'name': _nameController.text.trim(),
+          'email': _emailController.text.trim(),
+          'photoURL': photoURL ?? '',
+          'createdAt': DateTime.now().millisecondsSinceEpoch,
+        });
 
         // Reload user to get updated profile
         await userCredential.user?.reload();
@@ -189,47 +253,16 @@ class _RegisterPageState extends State<RegisterPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Profile Image Picker
+              // Brain Image First
               Center(
-                child: GestureDetector(
-                  onTap: _pickImage,
-                  child: CircleAvatar(
-                    radius: 60,
-                    backgroundColor: Colors.purple.shade100,
-                    backgroundImage: _profileImage != null
-                        ? FileImage(_profileImage!)
-                        : null,
-                    child: _profileImage == null
-                        ? Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.add_a_photo,
-                                size: 40,
-                                color: Colors.purple,
-                              ),
-                              SizedBox(height: 5),
-                              Text(
-                                'Add Photo',
-                                style: TextStyle(
-                                  color: Colors.purple,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          )
-                        : null,
-                  ),
+                child: Image.asset(
+                  "images/brain.jpg",
+                  width: 150,
+                  height: 150,
                 ),
               ),
-              const SizedBox(height: 20),
-              Image.asset(
-                "images/brain.jpg",
-                width: 150,
-                height: 150,
-              ),
-              const SizedBox(height: 20),
-              // ⭐ NEW: Name Field
+              const SizedBox(height: 30),
+              // Name Field
               TextFormField(
                 controller: _nameController,
                 decoration: InputDecoration(
@@ -291,7 +324,72 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
                 validator: _validateConfirmPassword,
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 30),
+              // Profile Image Picker (Last)
+              Center(
+                child: Column(
+                  children: [
+                    Text(
+                      'Profile Photo (Optional)',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Stack(
+                      children: [
+                        GestureDetector(
+                          onTap: _pickImage,
+                          child: CircleAvatar(
+                            radius: 60,
+                            backgroundColor: Colors.purple.shade100,
+                            backgroundImage: kIsWeb && _webImage != null
+                                ? MemoryImage(_webImage!)
+                                : (_profileImage != null ? FileImage(_profileImage!) : null) as ImageProvider?,
+                            child: (_profileImage == null && _webImage == null)
+                                ? Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.add_a_photo,
+                                        size: 40,
+                                        color: Colors.purple,
+                                      ),
+                                      SizedBox(height: 5),
+                                      Text(
+                                        'Add Photo',
+                                        style: TextStyle(
+                                          color: Colors.purple,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : null,
+                          ),
+                        ),
+                        if (!kIsWeb)
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: CircleAvatar(
+                              backgroundColor: Colors.purple,
+                              radius: 18,
+                              child: IconButton(
+                                icon: Icon(Icons.camera_alt, size: 18, color: Colors.white),
+                                padding: EdgeInsets.zero,
+                                onPressed: _pickImageFromCamera,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 30),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   shape: RoundedRectangleBorder(
